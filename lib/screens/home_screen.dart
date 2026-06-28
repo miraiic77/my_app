@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'batch_management_screen.dart'; // <-- ADD THIS LINE
+import 'student_management_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -119,52 +121,84 @@ class HomeScreen extends StatelessWidget {
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+
+            // 1. Manage Batches
             _buildActionCard(
               context,
               'Manage Batches',
               'Create and manage student batches',
               Icons.class_,
               Colors.blue,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BatchManagementScreen(),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
+
+            // 2. Manage Students
             _buildActionCard(
               context,
               'Manage Students',
               'Add and view student records',
               Icons.people,
               Colors.green,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const StudentManagementScreen(),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
+
+            // 3. Manage Faculty
             _buildActionCard(
               context,
               'Manage Faculty',
               'Add and manage faculty members',
               Icons.school,
               Colors.orange,
+              null, // Coming soon
             ),
             const SizedBox(height: 12),
+
+            // 4. Mark Attendance
             _buildActionCard(
               context,
               'Mark Attendance',
               'Record student attendance',
               Icons.check_circle,
               Colors.purple,
+              null, // Coming soon
             ),
             const SizedBox(height: 12),
+
+            // 5. Faculty Attendance
             _buildActionCard(
               context,
               'Faculty Attendance',
               'Track faculty attendance',
               Icons.person,
               Colors.red,
+              null, // Coming soon
             ),
             const SizedBox(height: 12),
+
+            // 6. View Reports
             _buildActionCard(
               context,
               'View Reports',
               'Attendance reports and analytics',
               Icons.analytics,
               Colors.teal,
+              null, // Coming soon
             ),
           ],
         ),
@@ -208,12 +242,14 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  // UPDATED: Now accepts an optional onTap function!
   Widget _buildActionCard(
     BuildContext context,
     String title,
     String subtitle,
     IconData icon,
     Color color,
+    VoidCallback? onTap,
   ) {
     return Card(
       elevation: 2,
@@ -237,14 +273,13 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
         ),
         trailing: Icon(Icons.arrow_forward_ios, color: color, size: 20),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const BatchManagementScreen(),
-            ),
-          );
-        },
+        onTap:
+            onTap ??
+            () {
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(SnackBar(content: Text('$title - Coming Soon!')));
+            },
       ),
     );
   }
