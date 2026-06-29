@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'batch_management_screen.dart'; // <-- ADD THIS LINE
+import 'batch_management_screen.dart';
 import 'student_management_screen.dart';
+import 'faculty_management_screen.dart';
 import 'mark_attendance_screen.dart';
+import 'faculty_attendance_screen.dart';
+import 'view_reports_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -166,24 +169,34 @@ class HomeScreen extends StatelessWidget {
               'Add and manage faculty members',
               Icons.school,
               Colors.orange,
-              null, // Coming soon
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FacultyManagementScreen(),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
 
             // 4. Mark Attendance
             _buildActionCard(
-  context,
-  'Mark Attendance',
-  'Record student attendance',
-  Icons.check_circle,
-  Colors.purple,
-  () {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const MarkAttendanceScreen()),
-    );
-  },
-),
+              context,
+              'Mark Attendance',
+              'Record student attendance',
+              Icons.check_circle,
+              Colors.purple,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const MarkAttendanceScreen(),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 12),
 
             // 5. Faculty Attendance
             _buildActionCard(
@@ -192,18 +205,32 @@ class HomeScreen extends StatelessWidget {
               'Track faculty attendance',
               Icons.person,
               Colors.red,
-              null, // Coming soon
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const FacultyAttendanceScreen(),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 12),
 
-            // 6. View Reports
+            // 6. View Reports - FIXED!
             _buildActionCard(
               context,
               'View Reports',
               'Attendance reports and analytics',
               Icons.analytics,
               Colors.teal,
-              null, // Coming soon
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ViewReportsScreen(),
+                  ),
+                );
+              },
             ),
           ],
         ),
@@ -247,7 +274,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  // UPDATED: Now accepts an optional onTap function!
   Widget _buildActionCard(
     BuildContext context,
     String title,
@@ -278,12 +304,11 @@ class HomeScreen extends StatelessWidget {
           style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
         ),
         trailing: Icon(Icons.arrow_forward_ios, color: color, size: 20),
-        onTap:
-            onTap ??
+        onTap: onTap ??
             () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(SnackBar(content: Text('$title - Coming Soon!')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$title - Coming Soon!')),
+              );
             },
       ),
     );

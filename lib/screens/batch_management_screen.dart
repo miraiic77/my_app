@@ -44,17 +44,12 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
       };
 
       if (_isEditing && _editingBatchId != null) {
-        await FirebaseFirestore.instance
-            .collection('batches')
-            .doc(_editingBatchId)
-            .update(batchData);
+        await FirebaseFirestore.instance.collection('batches').doc(_editingBatchId).update(batchData);
       } else {
         await FirebaseFirestore.instance.collection('batches').add(batchData);
       }
       
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_isEditing ? 'Batch updated!' : 'Batch added!')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_isEditing ? 'Batch updated!' : 'Batch added!')));
       _clearForm();
       Navigator.pop(context);
     } catch (e) {
@@ -79,20 +74,14 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         content: const Text('Are you sure? This will not delete students.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text('Delete')),
         ],
       ),
     );
 
     if (confirm == true) {
       await FirebaseFirestore.instance.collection('batches').doc(docId).delete();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch deleted')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch deleted')));
     }
   }
 
@@ -110,13 +99,9 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
       }).toList();
       String csv = CsvService.convertToCsv(batches);
       CsvService.downloadCsv(csv, 'batches_export.csv');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Exported!')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Exported!')));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -128,27 +113,56 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
       List<Map<String, dynamic>> batches = CsvService.parseCsv(csvData);
       int count = 0;
       for (var batch in batches) {
-        if (batch['Name'] != null && batch['Name'].toString().isNotEmpty) {
+        String name = batch['Name'] ?? batch['Batch Name'] ?? '';
+        String facultyId = batch['Faculty ID'] ?? batch['FacultyID'] ?? '';
+        
+        if (name.isNotEmpty) {
           await FirebaseFirestore.instance.collection('batches').add({
-            'name': batch['Name'],
-            'facultyId': batch['Faculty ID'] ?? '',
+            'name': name,
+            'facultyId': facultyId,
             'studentCount': int.tryParse(batch['Student Count']?.toString() ?? '0') ?? 0,
             'createdAt': Timestamp.now(),
           });
           count++;
         }
       }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count batches!')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count batches!')));
       setState(() {});
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
-
+  Future<void> _syncStudentCounts() async {
+    setState(() => _isLoading = true);
+    try {
+      final batchesSnapshot = await FirebaseFirestore.instance.collection('batches').get();
+      
+      for (var batchDoc in batchesSnapshot.docs) {
+        // Count actual students for this batch
+        final studentsSnapshot = await FirebaseFirestore.instance
+            .collection('students')
+            .where('batchId', isEqualTo: batchDoc.id)
+            .count()
+            .get();
+        
+        // Update the batch document with the correct count
+        await batchDoc.reference.update({
+          'studentCount': studentsSnapshot.count ?? 0,
+        });
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ Student counts synced successfully!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error syncing: $e')));
+      }
+    }
+    setState(() => _isLoading = false);
+  }
   void _showAddBatchDialog() {
     showDialog(
       context: context,
@@ -159,39 +173,15 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Batch Name',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => v!.isEmpty ? 'Required' : null,
-              ),
+              TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'Batch Name', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Required' : null),
               const SizedBox(height: 12),
-              TextFormField(
-                controller: _facultyController,
-                decoration: const InputDecoration(
-                  labelText: 'Faculty ID',
-                  border: OutlineInputBorder(),
-                ),
-              ),
+              TextFormField(controller: _facultyController, decoration: const InputDecoration(labelText: 'Faculty ID', border: OutlineInputBorder())),
             ],
           ),
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              _clearForm();
-              Navigator.pop(context);
-            },
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: _isLoading ? null : _addBatch,
-            child: _isLoading
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(_isEditing ? 'Update' : 'Add'),
-          ),
+          TextButton(onPressed: () { _clearForm(); Navigator.pop(context); }, child: const Text('Cancel')),
+          ElevatedButton(onPressed: _isLoading ? null : _addBatch, child: _isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_isEditing ? 'Update' : 'Add')),
         ],
       ),
     );
@@ -204,7 +194,8 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         title: const Text('Batch Management'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
-        actions: [
+                actions: [
+          IconButton(icon: const Icon(Icons.sync), tooltip: 'Sync Student Counts', onPressed: _syncStudentCounts),
           IconButton(icon: const Icon(Icons.file_download), onPressed: _exportBatches),
           IconButton(icon: const Icon(Icons.file_upload), onPressed: _importBatches),
         ],
@@ -221,10 +212,7 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
                 const Text('Manage Batches', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    _clearForm();
-                    _showAddBatchDialog();
-                  },
+                  onPressed: () { _clearForm(); _showAddBatchDialog(); },
                   icon: const Icon(Icons.add),
                   label: const Text('Add Batch'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
@@ -239,43 +227,61 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
                 if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final batches = snapshot.data!.docs;
                 if (batches.isEmpty) return const Center(child: Text('No batches found.'));
+                
                 return ListView.builder(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: batches.length,
                   itemBuilder: (context, index) {
                     final batch = batches[index];
-                    final data = batch.data();
+                    final data = batch.data() as Map<String, dynamic>;
+                    
                     return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      child: ListTile(
-                        leading: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue.shade100,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.class_, color: Colors.blue),
-                        ),
-                        title: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('Faculty: ${data['facultyId'] ?? 'N/A'} | Students: ${data['studentCount'] ?? 0}'),
-                        trailing: PopupMenuButton<String>(
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                              value: 'edit',
-                              child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Edit')]),
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            // Icon
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(8)),
+                              child: const Icon(Icons.class_, color: Colors.blue),
                             ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Row(children: [Icon(Icons.delete, size: 20, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))]),
+                            const SizedBox(width: 12),
+                            
+                            // Name
+                            SizedBox(
+                              width: 120,
+                              child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
+                            ),
+                            const SizedBox(width: 8),
+                            
+                            // Faculty
+                            SizedBox(
+                              width: 150,
+                              child: Text('Faculty: ${data['facultyId'] ?? 'N/A'}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                            ),
+                            const SizedBox(width: 8),
+                            
+                            // Students
+                            SizedBox(
+                              width: 120,
+                              child: Text('Students: ${data['studentCount'] ?? 0}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                            ),
+                            const Spacer(),
+                            
+                            // Actions Menu
+                            PopupMenuButton<String>(
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Edit')])),
+                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 20, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
+                              ],
+                              onSelected: (value) {
+                                if (value == 'edit') _editBatch(batch.id, data);
+                                else if (value == 'delete') _deleteBatch(batch.id);
+                              },
                             ),
                           ],
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _editBatch(batch.id, data);
-                            } else if (value == 'delete') {
-                              _deleteBatch(batch.id);
-                            }
-                          },
                         ),
                       ),
                     );

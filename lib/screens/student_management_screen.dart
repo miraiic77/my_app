@@ -44,9 +44,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
   Future<void> _saveStudent() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedBatchId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please select a batch')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select a batch')),
+      );
       return;
     }
 
@@ -68,11 +68,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             .doc(_editingStudentId)
             .update(studentData);
       } else {
-        await FirebaseFirestore.instance
-            .collection('students')
-            .add(studentData);
-
-        // Update student count in batch
+        await FirebaseFirestore.instance.collection('students').add(studentData);
         await FirebaseFirestore.instance
             .collection('batches')
             .doc(_selectedBatchId)
@@ -80,19 +76,13 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(_isEditing ? 'Student updated!' : 'Student added!'),
-        ),
+        SnackBar(content: Text(_isEditing ? 'Student updated!' : 'Student added!')),
       );
-
       _clearForm();
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
-
     setState(() => _isLoading = false);
   }
 
@@ -112,12 +102,9 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Student'),
-        content: const Text('Are you sure you want to delete this student?'),
+        content: const Text('Are you sure?'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -128,41 +115,20 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
 
     if (confirm == true) {
-      try {
+      await FirebaseFirestore.instance.collection('students').doc(docId).delete();
+      if (batchId != null) {
         await FirebaseFirestore.instance
-            .collection('students')
-            .doc(docId)
-            .delete();
-
-        // Update student count in batch
-        if (batchId != null) {
-          await FirebaseFirestore.instance
-              .collection('batches')
-              .doc(batchId)
-              .update({'studentCount': FieldValue.increment(-1)});
-        }
-
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Student deleted')));
-      } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+            .collection('batches')
+            .doc(batchId)
+            .update({'studentCount': FieldValue.increment(-1)});
       }
     }
   }
 
   Future<void> _exportStudents() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('students')
-          .get();
-      final batchesSnapshot = await FirebaseFirestore.instance
-          .collection('batches')
-          .get();
-
-      // Create batch ID to name map
+      final snapshot = await FirebaseFirestore.instance.collection('students').get();
+      final batchesSnapshot = await FirebaseFirestore.instance.collection('batches').get();
       Map<String, String> batchMap = {};
       for (var batch in batchesSnapshot.docs) {
         batchMap[batch.id] = batch.data()['name'] ?? 'Unknown';
@@ -177,21 +143,14 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
           'Email': data['email'] ?? '',
           'Phone': data['phone'] ?? '',
           'Batch': batchMap[data['batchId']] ?? 'Unknown',
-          'Enrollment Date':
-              (data['enrollmentDate'] as Timestamp?)?.toDate().toString() ?? '',
         };
       }).toList();
 
       String csv = CsvService.convertToCsv(students);
       CsvService.downloadCsv(csv, 'students_export.csv');
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Students exported successfully!')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Exported!')));
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Export error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -200,52 +159,46 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
       String? csvData = await CsvService.pickCsvFile();
       if (csvData == null) return;
 
-      // Get batches to match names to IDs
-      final batchesSnapshot = await FirebaseFirestore.instance
-          .collection('batches')
-          .get();
+      final batchesSnapshot = await FirebaseFirestore.instance.collection('batches').get();
       Map<String, String> batchNameToId = {};
       for (var batch in batchesSnapshot.docs) {
         batchNameToId[batch.data()['name']?.toLowerCase() ?? ''] = batch.id;
       }
 
       List<Map<String, dynamic>> students = CsvService.parseCsv(csvData);
-
-      int successCount = 0;
-      for (var student in students) {
-        if (student['Name'] != null && student['Name'].toString().isNotEmpty) {
-          // Try to find batch ID from batch name
+      int count = 0;
+            for (var student in students) {
+        String name = student['Name'] ?? student['Student Name'] ?? '';
+        
+        if (name.isNotEmpty) {
           String? batchId;
           String batchName = student['Batch']?.toString().toLowerCase() ?? '';
-          if (batchName.isNotEmpty) {
-            batchId = batchNameToId[batchName];
-          }
+          if (batchName.isNotEmpty) batchId = batchNameToId[batchName];
 
           if (batchId != null) {
             await FirebaseFirestore.instance.collection('students').add({
-              'name': student['Name'],
+              'name': name,
               'rollNumber': student['Roll Number'] ?? '',
               'email': student['Email'] ?? '',
               'phone': student['Phone'] ?? '',
               'batchId': batchId,
               'enrollmentDate': Timestamp.now(),
             });
-            successCount++;
+            
+            // ⚠️ THIS LINE IS CRITICAL - Don't forget it!
+            await FirebaseFirestore.instance
+                .collection('batches')
+                .doc(batchId)
+                .update({'studentCount': FieldValue.increment(1)});
+                
+            count++;
           }
         }
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Imported $successCount students successfully!'),
-        ),
-      );
-
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count students!')));
       setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Import error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -263,73 +216,29 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextFormField(
-                      controller: _nameController,
-                      decoration: const InputDecoration(
-                        labelText: 'Student Name *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
-                    ),
+                    TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'Name *', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Required' : null),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _rollController,
-                      decoration: const InputDecoration(
-                        labelText: 'Roll Number *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v!.isEmpty ? 'Required' : null,
-                    ),
+                    TextFormField(controller: _rollController, decoration: const InputDecoration(labelText: 'Roll Number *', border: OutlineInputBorder()), validator: (v) => v!.isEmpty ? 'Required' : null),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'Email',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                    ),
+                    TextFormField(controller: _emailController, decoration: const InputDecoration(labelText: 'Email', border: OutlineInputBorder()), keyboardType: TextInputType.emailAddress),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _phoneController,
-                      decoration: const InputDecoration(
-                        labelText: 'Phone',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: TextInputType.phone,
-                    ),
+                    TextFormField(controller: _phoneController, decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()), keyboardType: TextInputType.phone),
                     const SizedBox(height: 12),
                     StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('batches')
-                          .snapshots(),
+                      stream: FirebaseFirestore.instance.collection('batches').snapshots(),
                       builder: (context, snapshot) {
-                        if (!snapshot.hasData) {
-                          return const CircularProgressIndicator();
-                        }
-
+                        if (!snapshot.hasData) return const CircularProgressIndicator();
                         final batches = snapshot.data!.docs;
                         return DropdownButtonFormField<String>(
                           value: _selectedBatchId,
-                          decoration: const InputDecoration(
-                            labelText: 'Batch *',
-                            border: OutlineInputBorder(),
-                          ),
+                          decoration: const InputDecoration(labelText: 'Batch *', border: OutlineInputBorder()),
                           items: batches.map((batch) {
                             return DropdownMenuItem(
                               value: batch.id,
-                              child: Text(
-                                (batch.data()
-                                        as Map<String, dynamic>)['name'] ??
-                                    'Unnamed',
-                              ),
+                              child: Text((batch.data() as Map<String, dynamic>)['name'] ?? 'Unnamed'),
                             );
                           }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedBatchId = value;
-                            });
-                          },
+                          onChanged: (value) => setState(() => _selectedBatchId = value),
                           validator: (v) => v == null ? 'Required' : null,
                         );
                       },
@@ -340,23 +249,8 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: () {
-                _clearForm();
-                Navigator.pop(context);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: _isLoading ? null : _saveStudent,
-              child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Text(_isEditing ? 'Update' : 'Add'),
-            ),
+            TextButton(onPressed: () { _clearForm(); Navigator.pop(context); }, child: const Text('Cancel')),
+            ElevatedButton(onPressed: _isLoading ? null : _saveStudent, child: Text(_isEditing ? 'Update' : 'Add')),
           ],
         ),
       ),
@@ -371,21 +265,12 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         backgroundColor: Colors.green,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            tooltip: 'Export CSV',
-            onPressed: _exportStudents,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            tooltip: 'Import CSV',
-            onPressed: _importStudents,
-          ),
+          IconButton(icon: const Icon(Icons.file_download), onPressed: _exportStudents),
+          IconButton(icon: const Icon(Icons.file_upload), onPressed: _importStudents),
         ],
       ),
       body: Column(
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.all(16),
             color: Colors.green.shade50,
@@ -393,183 +278,91 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               children: [
                 const Icon(Icons.people, color: Colors.green, size: 32),
                 const SizedBox(width: 12),
-                const Text(
-                  'Manage Students',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                const Text('Manage Students', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 ElevatedButton.icon(
-                  onPressed: () {
-                    _clearForm();
-                    _showStudentDialog();
-                  },
+                  onPressed: () { _clearForm(); _showStudentDialog(); },
                   icon: const Icon(Icons.add),
                   label: const Text('Add Student'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
                 ),
               ],
             ),
           ),
-
-          // Search Bar
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextField(
               decoration: InputDecoration(
-                hintText: 'Search by name, roll number, or email...',
+                hintText: 'Search by name, roll, email...',
                 prefixIcon: const Icon(Icons.search),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () {
-                          setState(() {
-                            _searchQuery = '';
-                          });
-                        },
-                      )
-                    : null,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _searchQuery = '')) : null,
               ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.toLowerCase();
-                });
-              },
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
             ),
           ),
-
-          // Students List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('students')
-                  .orderBy('name')
-                  .snapshots(),
+              stream: FirebaseFirestore.instance.collection('students').orderBy('name').snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final students = snapshot.data!.docs;
-
-                // Filter students based on search
-                final filteredStudents = students.where((student) {
-                  final data = student.data() as Map<String, dynamic>;
+                
+                final filtered = students.where((s) {
+                  final data = s.data() as Map<String, dynamic>;
                   final name = (data['name'] ?? '').toString().toLowerCase();
-                  final roll = (data['rollNumber'] ?? '')
-                      .toString()
-                      .toLowerCase();
+                  final roll = (data['rollNumber'] ?? '').toString().toLowerCase();
                   final email = (data['email'] ?? '').toString().toLowerCase();
-                  return name.contains(_searchQuery) ||
-                      roll.contains(_searchQuery) ||
-                      email.contains(_searchQuery);
+                  return name.contains(_searchQuery) || roll.contains(_searchQuery) || email.contains(_searchQuery);
                 }).toList();
 
-                if (filteredStudents.isEmpty) {
-                  return Center(
-                    child: Text(
-                      _searchQuery.isEmpty
-                          ? 'No students found. Add one to get started!'
-                          : 'No students match your search.',
-                    ),
-                  );
-                }
+                if (filtered.isEmpty) return Center(child: Text(_searchQuery.isEmpty ? 'No students found.' : 'No match found.'));
 
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: filteredStudents.length,
+                  itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    final student = filteredStudents[index];
+                    final student = filtered[index];
                     final data = student.data() as Map<String, dynamic>;
 
-                    return FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('batches')
-                          .doc(data['batchId'])
-                          .get(),
-                      builder: (context, batchSnapshot) {
-                        String batchName = 'Loading...';
-                        if (batchSnapshot.hasData &&
-                            batchSnapshot.data!.exists) {
-                          batchName = batchSnapshot.data!['name'] ?? 'Unknown';
-                        }
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: CircleAvatar(
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            CircleAvatar(
                               backgroundColor: Colors.green.shade100,
-                              child: Text(
-                                (data['name'] ?? '?')[0].toUpperCase(),
-                                style: TextStyle(
-                                  color: Colors.green.shade700,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
+                              child: Text((data['name'] ?? '?')[0].toUpperCase(), style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold)),
                             ),
-                            title: Text(
-                              data['name'] ?? 'Unnamed',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text('Roll: ${data['rollNumber'] ?? 'N/A'}'),
-                                Text('Batch: $batchName'),
-                                if (data['email'] != null &&
-                                    data['email'].toString().isNotEmpty)
-                                  Text('Email: ${data['email']}'),
-                              ],
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit, size: 20),
-                                      SizedBox(width: 8),
-                                      Text('Edit'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        Icons.delete,
-                                        size: 20,
-                                        color: Colors.red,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Delete',
-                                        style: TextStyle(color: Colors.red),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              onSelected: (value) {
-                                if (value == 'edit') {
-                                  _editStudent(student.id, data);
-                                } else if (value == 'delete') {
-                                  _deleteStudent(student.id, data['batchId']);
+                            const SizedBox(width: 12),
+                            SizedBox(width: 120, child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
+                            const SizedBox(width: 8),
+                            SizedBox(width: 140, child: Text('Roll: ${data['rollNumber'] ?? 'N/A'}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
+                            FutureBuilder<DocumentSnapshot>(
+                              future: FirebaseFirestore.instance.collection('batches').doc(data['batchId']).get(),
+                              builder: (context, batchSnapshot) {
+                                String batchName = '...';
+                                if (batchSnapshot.hasData && batchSnapshot.data!.exists) {
+                                  batchName = batchSnapshot.data!['name'] ?? 'N/A';
                                 }
+                                return SizedBox(width: 100, child: Text('Batch: $batchName', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis));
                               },
                             ),
-                          ),
-                        );
-                      },
+                            Expanded(child: Text('Email: ${data['email'] ?? 'N/A'}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
+                            PopupMenuButton<String>(
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Edit')])),
+                                const PopupMenuItem(value: 'delete', child: Row(children: [Icon(Icons.delete, size: 20, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))])),
+                              ],
+                              onSelected: (value) {
+                                if (value == 'edit') _editStudent(student.id, data);
+                                else if (value == 'delete') _deleteStudent(student.id, data['batchId']);
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     );
                   },
                 );
