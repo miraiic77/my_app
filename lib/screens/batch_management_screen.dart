@@ -14,6 +14,8 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
   final _nameController = TextEditingController();
   final _facultyController = TextEditingController();
   bool _isLoading = false;
+  bool _isEditing = false;
+  String? _editingBatchId;
 
   @override
   void dispose() {
@@ -22,36 +24,81 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     super.dispose();
   }
 
+  void _clearForm() {
+    _nameController.clear();
+    _facultyController.clear();
+    _isEditing = false;
+    _editingBatchId = null;
+  }
+
   Future<void> _addBatch() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
     try {
-      await FirebaseFirestore.instance.collection('batches').add({
+      final batchData = {
         'name': _nameController.text.trim(),
         'facultyId': _facultyController.text.trim(),
         'studentCount': 0,
         'createdAt': Timestamp.now(),
-      });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Batch added!')));
-      _nameController.clear();
-      _facultyController.clear();
+      };
+
+      if (_isEditing && _editingBatchId != null) {
+        await FirebaseFirestore.instance
+            .collection('batches')
+            .doc(_editingBatchId)
+            .update(batchData);
+      } else {
+        await FirebaseFirestore.instance.collection('batches').add(batchData);
+      }
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_isEditing ? 'Batch updated!' : 'Batch added!')),
+      );
+      _clearForm();
       Navigator.pop(context);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
     setState(() => _isLoading = false);
   }
 
+  Future<void> _editBatch(String docId, Map<String, dynamic> data) async {
+    _nameController.text = data['name'] ?? '';
+    _facultyController.text = data['facultyId'] ?? '';
+    _isEditing = true;
+    _editingBatchId = docId;
+    _showAddBatchDialog();
+  }
+
+  Future<void> _deleteBatch(String docId) async {
+    bool? confirm = await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Batch'),
+        content: const Text('Are you sure? This will not delete students.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance.collection('batches').doc(docId).delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Batch deleted')));
+      }
+    }
+  }
+
   Future<void> _exportBatches() async {
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('batches')
-          .get();
+      final snapshot = await FirebaseFirestore.instance.collection('batches').get();
       List<Map<String, dynamic>> batches = snapshot.docs.map((doc) {
         final data = doc.data();
         return {
@@ -63,13 +110,13 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
       }).toList();
       String csv = CsvService.convertToCsv(batches);
       CsvService.downloadCsv(csv, 'batches_export.csv');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Exported!')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Exported!')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -77,6 +124,7 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     try {
       String? csvData = await CsvService.pickCsvFile();
       if (csvData == null) return;
+
       List<Map<String, dynamic>> batches = CsvService.parseCsv(csvData);
       int count = 0;
       for (var batch in batches) {
@@ -84,47 +132,20 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
           await FirebaseFirestore.instance.collection('batches').add({
             'name': batch['Name'],
             'facultyId': batch['Faculty ID'] ?? '',
-            'studentCount':
-                int.tryParse(batch['Student Count']?.toString() ?? '0') ?? 0,
+            'studentCount': int.tryParse(batch['Student Count']?.toString() ?? '0') ?? 0,
             'createdAt': Timestamp.now(),
           });
           count++;
         }
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Imported $count batches!')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count batches!')));
+      }
       setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
-    }
-  }
-
-  Future<void> _deleteBatch(String docId) async {
-    bool? confirm = await showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Batch?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      await FirebaseFirestore.instance
-          .collection('batches')
-          .doc(docId)
-          .delete();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -132,7 +153,7 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Add New Batch'),
+        title: Text(_isEditing ? 'Edit Batch' : 'Add New Batch'),
         content: Form(
           key: _formKey,
           child: Column(
@@ -159,12 +180,17 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () {
+              _clearForm();
+              Navigator.pop(context);
+            },
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: _isLoading ? null : _addBatch,
-            child: const Text('Add'),
+            child: _isLoading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text(_isEditing ? 'Update' : 'Add'),
           ),
         ],
       ),
@@ -179,14 +205,8 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.file_download),
-            onPressed: _exportBatches,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_upload),
-            onPressed: _importBatches,
-          ),
+          IconButton(icon: const Icon(Icons.file_download), onPressed: _exportBatches),
+          IconButton(icon: const Icon(Icons.file_upload), onPressed: _importBatches),
         ],
       ),
       body: Column(
@@ -198,34 +218,27 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
               children: [
                 const Icon(Icons.class_, color: Colors.blue, size: 32),
                 const SizedBox(width: 12),
-                const Text(
-                  'Manage Batches',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                const Text('Manage Batches', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const Spacer(),
                 ElevatedButton.icon(
-                  onPressed: _showAddBatchDialog,
+                  onPressed: () {
+                    _clearForm();
+                    _showAddBatchDialog();
+                  },
                   icon: const Icon(Icons.add),
                   label: const Text('Add Batch'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
-                  ),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
                 ),
               ],
             ),
           ),
           Expanded(
             child: StreamBuilder(
-              stream: FirebaseFirestore.instance
-                  .collection('batches')
-                  .snapshots(),
+              stream: FirebaseFirestore.instance.collection('batches').snapshots(),
               builder: (context, snapshot) {
-                if (!snapshot.hasData)
-                  return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
                 final batches = snapshot.data!.docs;
-                if (batches.isEmpty)
-                  return const Center(child: Text('No batches found.'));
+                if (batches.isEmpty) return const Center(child: Text('No batches found.'));
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: batches.length,
@@ -243,16 +256,26 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
                           ),
                           child: const Icon(Icons.class_, color: Colors.blue),
                         ),
-                        title: Text(
-                          data['name'] ?? 'Unnamed',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text(
-                          'Faculty: ${data['facultyId'] ?? 'N/A'} | Students: ${data['studentCount'] ?? 0}',
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: Colors.red),
-                          onPressed: () => _deleteBatch(batch.id),
+                        title: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text('Faculty: ${data['facultyId'] ?? 'N/A'} | Students: ${data['studentCount'] ?? 0}'),
+                        trailing: PopupMenuButton<String>(
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'edit',
+                              child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Edit')]),
+                            ),
+                            const PopupMenuItem(
+                              value: 'delete',
+                              child: Row(children: [Icon(Icons.delete, size: 20, color: Colors.red), SizedBox(width: 8), Text('Delete', style: TextStyle(color: Colors.red))]),
+                            ),
+                          ],
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _editBatch(batch.id, data);
+                            } else if (value == 'delete') {
+                              _deleteBatch(batch.id);
+                            }
+                          },
                         ),
                       ),
                     );

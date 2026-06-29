@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'batch_management_screen.dart'; // <-- ADD THIS LINE
 import 'student_management_screen.dart';
+import 'mark_attendance_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -171,14 +172,18 @@ class HomeScreen extends StatelessWidget {
 
             // 4. Mark Attendance
             _buildActionCard(
-              context,
-              'Mark Attendance',
-              'Record student attendance',
-              Icons.check_circle,
-              Colors.purple,
-              null, // Coming soon
-            ),
-            const SizedBox(height: 12),
+  context,
+  'Mark Attendance',
+  'Record student attendance',
+  Icons.check_circle,
+  Colors.purple,
+  () {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const MarkAttendanceScreen()),
+    );
+  },
+),
 
             // 5. Faculty Attendance
             _buildActionCard(
