@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/csv_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class BatchManagementScreen extends StatefulWidget {
   const BatchManagementScreen({super.key});
@@ -105,18 +106,37 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     }
   }
 
-  Future<void> _importBatches() async {
-    try {
-      String? csvData = await CsvService.pickCsvFile();
-      if (csvData == null) return;
+    Future<void> _importBatches() async {
+    final format = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import Format'),
+        content: const Text('Choose file format to import'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'csv'), child: const Text('CSV')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'excel'), child: const Text('Excel')),
+        ],
+      ),
+    );
+    if (format == null) return;
 
-      List<Map<String, dynamic>> batches = CsvService.parseCsv(csvData);
+    List<Map<String, dynamic>> batches = [];
+    try {
+      if (format == 'csv') {
+        String? csvData = await CsvService.pickCsvFile();
+        if (csvData == null) return;
+        batches = CsvService.parseCsv(csvData);
+      } else {
+        PlatformFile? file = await CsvService.pickExcelFile();
+        if (file == null) return;
+        batches = CsvService.parseExcel(file);
+      }
+
       int count = 0;
       for (var batch in batches) {
         String name = batch['Name'] ?? batch['Batch Name'] ?? '';
         String facultyId = batch['Faculty ID'] ?? batch['FacultyID'] ?? '';
-        
-        if (name.isNotEmpty) {
+        if (name.toString().isNotEmpty) {
           await FirebaseFirestore.instance.collection('batches').add({
             'name': name,
             'facultyId': facultyId,
@@ -126,7 +146,7 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
           count++;
         }
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count batches!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Imported $count batches from ${format.toUpperCase()}!')));
       setState(() {});
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -187,17 +207,17 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
     );
   }
 
-  @override
+   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Batch Management'),
         backgroundColor: Colors.blue,
         foregroundColor: Colors.white,
-                actions: [
+        actions: [
           IconButton(icon: const Icon(Icons.sync), tooltip: 'Sync Student Counts', onPressed: _syncStudentCounts),
           IconButton(icon: const Icon(Icons.file_download), onPressed: _exportBatches),
-          IconButton(icon: const Icon(Icons.file_upload), onPressed: _importBatches),
+          IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import CSV or Excel', onPressed: _importBatches),
         ],
       ),
       body: Column(
@@ -241,36 +261,18 @@ class _BatchManagementScreenState extends State<BatchManagementScreen> {
                         padding: const EdgeInsets.all(12),
                         child: Row(
                           children: [
-                            // Icon
                             Container(
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(color: Colors.blue.shade100, borderRadius: BorderRadius.circular(8)),
                               child: const Icon(Icons.class_, color: Colors.blue),
                             ),
                             const SizedBox(width: 12),
-                            
-                            // Name
-                            SizedBox(
-                              width: 120,
-                              child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis),
-                            ),
+                            SizedBox(width: 120, child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 8),
-                            
-                            // Faculty
-                            SizedBox(
-                              width: 150,
-                              child: Text('Faculty: ${data['facultyId'] ?? 'N/A'}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                            ),
+                            SizedBox(width: 150, child: Text('Faculty: ${data['facultyId'] ?? 'N/A'}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 8),
-                            
-                            // Students
-                            SizedBox(
-                              width: 120,
-                              child: Text('Students: ${data['studentCount'] ?? 0}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
-                            ),
+                            SizedBox(width: 120, child: Text('Students: ${data['studentCount'] ?? 0}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
                             const Spacer(),
-                            
-                            // Actions Menu
                             PopupMenuButton<String>(
                               itemBuilder: (context) => [
                                 const PopupMenuItem(value: 'edit', child: Row(children: [Icon(Icons.edit, size: 20), SizedBox(width: 8), Text('Edit')])),

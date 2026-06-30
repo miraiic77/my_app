@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/csv_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class FacultyManagementScreen extends StatefulWidget {
   const FacultyManagementScreen({super.key});
@@ -116,16 +117,36 @@ class _FacultyManagementScreenState extends State<FacultyManagementScreen> {
     }
   }
 
-  Future<void> _importFaculties() async {
-    try {
-      String? csvData = await CsvService.pickCsvFile();
-      if (csvData == null) return;
+    Future<void> _importFaculties() async {
+    final format = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import Format'),
+        content: const Text('Choose file format to import'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'csv'), child: const Text('CSV')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'excel'), child: const Text('Excel')),
+        ],
+      ),
+    );
+    if (format == null) return;
 
-      List<Map<String, dynamic>> faculties = CsvService.parseCsv(csvData);
+    List<Map<String, dynamic>> faculties = [];
+    try {
+      if (format == 'csv') {
+        String? csvData = await CsvService.pickCsvFile();
+        if (csvData == null) return;
+        faculties = CsvService.parseCsv(csvData);
+      } else {
+        PlatformFile? file = await CsvService.pickExcelFile();
+        if (file == null) return;
+        faculties = CsvService.parseExcel(file);
+      }
+
       int count = 0;
       for (var faculty in faculties) {
         String name = faculty['Name'] ?? faculty['Faculty Name'] ?? '';
-        if (name.isNotEmpty) {
+        if (name.toString().isNotEmpty) {
           await FirebaseFirestore.instance.collection('faculties').add({
             'name': name,
             'email': faculty['Email'] ?? '',
@@ -136,10 +157,10 @@ class _FacultyManagementScreenState extends State<FacultyManagementScreen> {
           count++;
         }
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count faculties!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Imported $count faculties from ${format.toUpperCase()}!')));
       setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -176,7 +197,7 @@ class _FacultyManagementScreenState extends State<FacultyManagementScreen> {
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -185,7 +206,7 @@ class _FacultyManagementScreenState extends State<FacultyManagementScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(icon: const Icon(Icons.file_download), onPressed: _exportFaculties),
-          IconButton(icon: const Icon(Icons.file_upload), onPressed: _importFaculties),
+          IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import CSV or Excel', onPressed: _importFaculties),
         ],
       ),
       body: Column(

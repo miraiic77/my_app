@@ -28,9 +28,7 @@ dependencies:
   http: ^1.4.0
 
   cupertino_icons: ^1.0.8
-  pdf: ^3.13.0
-  printing: ^5.15.0
-
+  spreadsheet_decoder: ^2.3.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

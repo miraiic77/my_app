@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/csv_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class StudentManagementScreen extends StatefulWidget {
   const StudentManagementScreen({super.key});
@@ -154,23 +155,42 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     }
   }
 
-  Future<void> _importStudents() async {
+    Future<void> _importStudents() async {
+    final format = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Import Format'),
+        content: const Text('Choose file format to import'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, 'csv'), child: const Text('CSV')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 'excel'), child: const Text('Excel')),
+        ],
+      ),
+    );
+    if (format == null) return;
+
+    List<Map<String, dynamic>> students = [];
     try {
-      String? csvData = await CsvService.pickCsvFile();
-      if (csvData == null) return;
+      if (format == 'csv') {
+        String? csvData = await CsvService.pickCsvFile();
+        if (csvData == null) return;
+        students = CsvService.parseCsv(csvData);
+      } else {
+        PlatformFile? file = await CsvService.pickExcelFile();
+        if (file == null) return;
+        students = CsvService.parseExcel(file);
+      }
 
       final batchesSnapshot = await FirebaseFirestore.instance.collection('batches').get();
       Map<String, String> batchNameToId = {};
       for (var batch in batchesSnapshot.docs) {
-        batchNameToId[batch.data()['name']?.toLowerCase() ?? ''] = batch.id;
+        batchNameToId[batch.data()['name']?.toString().toLowerCase() ?? ''] = batch.id;
       }
 
-      List<Map<String, dynamic>> students = CsvService.parseCsv(csvData);
       int count = 0;
-            for (var student in students) {
+      for (var student in students) {
         String name = student['Name'] ?? student['Student Name'] ?? '';
-        
-        if (name.isNotEmpty) {
+        if (name.toString().isNotEmpty) {
           String? batchId;
           String batchName = student['Batch']?.toString().toLowerCase() ?? '';
           if (batchName.isNotEmpty) batchId = batchNameToId[batchName];
@@ -184,21 +204,15 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
               'batchId': batchId,
               'enrollmentDate': Timestamp.now(),
             });
-            
-            // ⚠️ THIS LINE IS CRITICAL - Don't forget it!
-            await FirebaseFirestore.instance
-                .collection('batches')
-                .doc(batchId)
-                .update({'studentCount': FieldValue.increment(1)});
-                
+            await FirebaseFirestore.instance.collection('batches').doc(batchId).update({'studentCount': FieldValue.increment(1)});
             count++;
           }
         }
       }
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Imported $count students!')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Imported $count students from ${format.toUpperCase()}!')));
       setState(() {});
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
@@ -257,7 +271,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
     );
   }
 
-  @override
+    @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -266,7 +280,7 @@ class _StudentManagementScreenState extends State<StudentManagementScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(icon: const Icon(Icons.file_download), onPressed: _exportStudents),
-          IconButton(icon: const Icon(Icons.file_upload), onPressed: _importStudents),
+          IconButton(icon: const Icon(Icons.file_upload), tooltip: 'Import CSV or Excel', onPressed: _importStudents),
         ],
       ),
       body: Column(

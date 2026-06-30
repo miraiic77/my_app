@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/csv_service.dart';
-import '../services/pdf_service.dart';
 
 class ViewReportsScreen extends StatefulWidget {
   const ViewReportsScreen({super.key});
@@ -154,8 +153,6 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(child: ElevatedButton.icon(onPressed: () => _exportStudentCsv(groupedByStudent), icon: const Icon(Icons.file_download), label: const Text('Export CSV'), style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white))),
-                  const SizedBox(width: 8),
-                  Expanded(child: ElevatedButton.icon(onPressed: () => _exportStudentPdf(groupedByStudent), icon: const Icon(Icons.picture_as_pdf), label: const Text('Export PDF'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white))),
                 ]),
               ]),
             ),
@@ -262,8 +259,6 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
                 const SizedBox(height: 12),
                 Row(children: [
                   Expanded(child: ElevatedButton.icon(onPressed: () => _exportFacultyCsv(groupedByFaculty), icon: const Icon(Icons.file_download), label: const Text('Export CSV'), style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white))),
-                  const SizedBox(width: 8),
-                  Expanded(child: ElevatedButton.icon(onPressed: () => _exportFacultyPdf(groupedByFaculty), icon: const Icon(Icons.picture_as_pdf), label: const Text('Export PDF'), style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white))),
                 ]),
               ]),
             ),
@@ -383,17 +378,5 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
     String csv = CsvService.convertToCsv(exportData);
     CsvService.downloadCsv(csv, 'faculty_attendance_report_${_formatDate(_startDate)}_to_${_formatDate(_endDate)}.csv');
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV exported successfully!')));
-  }
-
-  Future<void> _exportStudentPdf(Map<String, List<Map<String, dynamic>>> groupedData) async {
-    List<Map<String, dynamic>> exportData = [];
-    groupedData.forEach((studentId, records) { for (var record in records) exportData.add({'Date': record['date'], 'Student Name': record['studentName'], 'Roll Number': record['rollNumber'], 'Batch': record['batchName'], 'Status': record['status']}); });
-    await PdfService.generateStudentAttendanceReport(exportData, _formatDate(_startDate), _formatDate(_endDate));
-  }
-
-  Future<void> _exportFacultyPdf(Map<String, List<Map<String, dynamic>>> groupedData) async {
-    List<Map<String, dynamic>> exportData = [];
-    groupedData.forEach((facultyId, records) { for (var record in records) exportData.add({'Date': record['date'], 'Faculty Name': record['facultyName'], 'Subject': record['subject'], 'Status': record['status']}); });
-    await PdfService.generateFacultyAttendanceReport(exportData, _formatDate(_startDate), _formatDate(_endDate));
   }
 }
