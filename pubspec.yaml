@@ -25,7 +25,7 @@ dependencies:
   # Google Sheets
   googleapis: ^13.2.0
   googleapis_auth: ^1.6.0
-  http: ^1.4.0
+  http: ^1.6.0
 
   cupertino_icons: ^1.0.8
   spreadsheet_decoder: ^2.3.0

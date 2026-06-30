@@ -17,11 +17,15 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
   DateTime _endDate = DateTime.now();
   String? _selectedBatchId;
   String _searchQuery = '';
+  
+  // New variables for Monthly Summary
+  int _selectedMonth = DateTime.now().month;
+  int _selectedYear = DateTime.now().year;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -40,7 +44,28 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
     if (picked != null) setState(() => _endDate = picked);
   }
 
+  Future<void> _pickMonth() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(_selectedYear, _selectedMonth),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+    if (picked != null) {
+      setState(() {
+        _selectedMonth = picked.month;
+        _selectedYear = picked.year;
+      });
+    }
+  }
+
   String _formatDate(DateTime date) => '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  
+  String _getMonthName(int month) {
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                    'July', 'August', 'September', 'October', 'November', 'December'];
+    return months[month - 1];
+  }
 
   Color _getStatusColor(String status) {
     switch (status) {
@@ -61,7 +86,11 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
-          tabs: const [Tab(text: 'Student Reports'), Tab(text: 'Faculty Reports')],
+          tabs: const [
+            Tab(text: 'Student Reports'), 
+            Tab(text: 'Faculty Reports'),
+            Tab(text: 'Monthly Summary'),
+          ],
         ),
       ),
       body: Column(
@@ -71,38 +100,69 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
             color: Colors.teal.shade50,
             child: Column(
               children: [
-                Row(
-                  children: [
-                    Expanded(child: InkWell(onTap: _pickStartDate, child: InputDecorator(decoration: const InputDecoration(labelText: 'Start Date', border: OutlineInputBorder(), filled: true, fillColor: Colors.white, suffixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(_formatDate(_startDate))))),
-                    const SizedBox(width: 12),
-                    Expanded(child: InkWell(onTap: _pickEndDate, child: InputDecorator(decoration: const InputDecoration(labelText: 'End Date', border: OutlineInputBorder(), filled: true, fillColor: Colors.white, suffixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(_formatDate(_endDate))))),
+                if (_tabController.index != 2) ...[
+                  Row(
+                    children: [
+                      Expanded(child: InkWell(onTap: _pickStartDate, child: InputDecorator(decoration: const InputDecoration(labelText: 'Start Date', border: OutlineInputBorder(), filled: true, fillColor: Colors.white, suffixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(_formatDate(_startDate))))),
+                      const SizedBox(width: 12),
+                      Expanded(child: InkWell(onTap: _pickEndDate, child: InputDecorator(decoration: const InputDecoration(labelText: 'End Date', border: OutlineInputBorder(), filled: true, fillColor: Colors.white, suffixIcon: Icon(Icons.calendar_today, size: 20)), child: Text(_formatDate(_endDate))))),
+                    ],
+                  ),
+                  if (_tabController.index == 0) ...[
+                    const SizedBox(height: 12),
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('batches').orderBy('name').snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) return const SizedBox();
+                        final batches = snapshot.data!.docs;
+                        return DropdownButtonFormField<String>(
+                          value: _selectedBatchId,
+                          decoration: const InputDecoration(labelText: 'Filter by Batch (Optional)', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
+                          items: [const DropdownMenuItem(value: null, child: Text('All Batches')), ...batches.map((batch) { final data = batch.data() as Map<String, dynamic>; return DropdownMenuItem(value: batch.id, child: Text(data['name'] ?? 'Unnamed')); })],
+                          onChanged: (value) => setState(() => _selectedBatchId = value),
+                        );
+                      },
+                    ),
                   ],
-                ),
-                if (_tabController.index == 0) ...[
                   const SizedBox(height: 12),
-                  StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance.collection('batches').orderBy('name').snapshots(),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData) return const SizedBox();
-                      final batches = snapshot.data!.docs;
-                      return DropdownButtonFormField<String>(
-                        value: _selectedBatchId,
-                        decoration: const InputDecoration(labelText: 'Filter by Batch (Optional)', border: OutlineInputBorder(), filled: true, fillColor: Colors.white),
-                        items: [const DropdownMenuItem(value: null, child: Text('All Batches')), ...batches.map((batch) { final data = batch.data() as Map<String, dynamic>; return DropdownMenuItem(value: batch.id, child: Text(data['name'] ?? 'Unnamed')); })],
-                        onChanged: (value) => setState(() => _selectedBatchId = value),
-                      );
-                    },
+                  TextField(
+                    decoration: InputDecoration(hintText: 'Search by name...', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white, suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _searchQuery = '')) : null),
+                    onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
+                  ),
+                ] else ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: _pickMonth,
+                          child: InputDecorator(
+                            decoration: const InputDecoration(
+                              labelText: 'Select Month & Year',
+                              border: OutlineInputBorder(),
+                              filled: true,
+                              fillColor: Colors.white,
+                              suffixIcon: Icon(Icons.calendar_month, size: 20),
+                            ),
+                            child: Text('${_getMonthName(_selectedMonth)} $_selectedYear'),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
-                const SizedBox(height: 12),
-                TextField(
-                  decoration: InputDecoration(hintText: 'Search by name...', prefixIcon: const Icon(Icons.search), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)), filled: true, fillColor: Colors.white, suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() => _searchQuery = '')) : null),
-                  onChanged: (value) => setState(() => _searchQuery = value.toLowerCase()),
-                ),
               ],
             ),
           ),
-          Expanded(child: TabBarView(controller: _tabController, children: [_buildStudentReports(), _buildFacultyReports()])),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _buildStudentReports(),
+                _buildFacultyReports(),
+                _buildMonthlySummary(),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -320,6 +380,217 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
     );
   }
 
+  Widget _buildMonthlySummary() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance.collection('student_attendance').snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final allRecords = snapshot.data!.docs;
+        final monthStr = _selectedMonth.toString().padLeft(2, '0');
+        final yearStr = _selectedYear.toString();
+        final monthPrefix = '$yearStr-$monthStr';
+        
+        // Filter records for selected month
+        var monthRecords = allRecords.where((doc) {
+          final data = doc.data() as Map<String, dynamic>;
+          final date = data['date'] ?? '';
+          return date.startsWith(monthPrefix);
+        }).toList();
+
+        // Group by batch
+        Map<String, Map<String, dynamic>> batchSummary = {};
+        
+        for (var doc in monthRecords) {
+          final data = doc.data() as Map<String, dynamic>;
+          final batchId = data['batchId'] ?? 'unknown';
+          final batchName = data['batchName'] ?? 'Unknown';
+          final status = data['status'] ?? '';
+          
+          if (!batchSummary.containsKey(batchId)) {
+            batchSummary[batchId] = {
+              'batchName': batchName,
+              'totalStudents': <String>{}, // Use Set to count unique students
+              'present': 0,
+              'absent': 0,
+              'late': 0,
+            };
+          }
+          
+          // Track unique students
+          final studentId = data['studentId'] ?? '';
+          if (studentId.isNotEmpty) {
+            (batchSummary[batchId]!['totalStudents'] as Set<String>).add(studentId);
+          }
+          
+          // Count statuses
+          if (status == 'present') batchSummary[batchId]!['present']++;
+          else if (status == 'absent') batchSummary[batchId]!['absent']++;
+          else if (status == 'late') batchSummary[batchId]!['late']++;
+        }
+
+        // Convert to list for display
+        List<Map<String, dynamic>> summaryList = batchSummary.entries.map((entry) {
+          final batchId = entry.key;
+          final data = entry.value;
+          final totalStudents = (data['totalStudents'] as Set<String>).length;
+          final present = data['present'] as int;
+          final absent = data['absent'] as int;
+          final late = data['late'] as int;
+          final totalRecords = present + absent + late;
+          final percentage = totalRecords > 0 ? ((present + late) / totalRecords * 100) : 0;
+          
+          return {
+            'batchId': batchId,
+            'batchName': data['batchName'],
+            'totalStudents': totalStudents,
+            'present': present,
+            'absent': absent,
+            'late': late,
+            'totalRecords': totalRecords,
+            'percentage': percentage,
+          };
+        }).toList();
+
+        // Sort by batch name
+        summaryList.sort((a, b) => (a['batchName'] as String).compareTo(b['batchName'] as String));
+
+        if (summaryList.isEmpty) {
+          return const Center(child: Text('No attendance records found for this month'));
+        }
+
+        return Column(
+          children: [
+            // Summary Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.teal.shade50,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.calendar_month, color: Colors.teal, size: 32),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Attendance Summary - ${_getMonthName(_selectedMonth)} $_selectedYear',
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.teal),
+                  ),
+                ],
+              ),
+            ),
+            
+            // Export Button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () => _exportMonthlySummary(summaryList),
+                  icon: const Icon(Icons.file_download),
+                  label: const Text('Export Summary to CSV'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 12)),
+                ),
+              ),
+            ),
+
+            // Summary Table
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: summaryList.length,
+                itemBuilder: (context, index) {
+                  final data = summaryList[index];
+                  final batchName = data['batchName'] as String;
+                  final totalStudents = data['totalStudents'] as int;
+                  final present = data['present'] as int;
+                  final absent = data['absent'] as int;
+                  final late = data['late'] as int;
+                  final percentage = data['percentage'] as double;
+                  
+                  final color = percentage >= 75 ? Colors.green : percentage >= 50 ? Colors.orange : Colors.red;
+
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.class_, color: Colors.blue, size: 24),
+                              const SizedBox(width: 8),
+                              Text(
+                                batchName,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: color),
+                                ),
+                                child: Text(
+                                  '${percentage.toStringAsFixed(1)}%',
+                                  style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              _buildSummaryStat('Total Students', '$totalStudents', Colors.blue),
+                              const SizedBox(width: 8),
+                              _buildSummaryStat('Present', '$present', Colors.green),
+                              const SizedBox(width: 8),
+                              _buildSummaryStat('Absent', '$absent', Colors.red),
+                              const SizedBox(width: 8),
+                              _buildSummaryStat('Late', '$late', Colors.orange),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildSummaryStat(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: color),
+            ),
+            Text(
+              label,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildStatCard(String label, String value, Color color) {
     return Expanded(child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.3))), child: Column(children: [Text(value, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: color)), Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade700), textAlign: TextAlign.center)])));
   }
@@ -378,5 +649,24 @@ class _ViewReportsScreenState extends State<ViewReportsScreen>
     String csv = CsvService.convertToCsv(exportData);
     CsvService.downloadCsv(csv, 'faculty_attendance_report_${_formatDate(_startDate)}_to_${_formatDate(_endDate)}.csv');
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('CSV exported successfully!')));
+  }
+
+  Future<void> _exportMonthlySummary(List<Map<String, dynamic>> summaryList) async {
+    List<Map<String, dynamic>> exportData = summaryList.map((data) {
+      return {
+        'Batch': data['batchName'],
+        'Total Students': data['totalStudents'],
+        'Month': _getMonthName(_selectedMonth),
+        'Year': _selectedYear,
+        'Present': data['present'],
+        'Absent': data['absent'],
+        'Late': data['late'],
+        'Attendance %': '${(data['percentage'] as double).toStringAsFixed(1)}%',
+      };
+    }).toList();
+    
+    String csv = CsvService.convertToCsv(exportData);
+    CsvService.downloadCsv(csv, 'monthly_summary_${_getMonthName(_selectedMonth)}_$_selectedYear.csv');
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Monthly summary exported successfully!')));
   }
 }
