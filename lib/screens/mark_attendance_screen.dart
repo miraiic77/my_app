@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class MarkAttendanceScreen extends StatefulWidget {
   const MarkAttendanceScreen({super.key});
@@ -70,7 +72,7 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
     setState(() => _isLoading = false);
   }
 
-  Future<void> _saveAttendance() async {
+    Future<void> _saveAttendance() async {
     if (_students.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No students to mark attendance for')));
       return;
@@ -92,6 +94,7 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
       final dateStr = _formatDate(_selectedDate);
       final currentUser = FirebaseAuth.instance.currentUser;
 
+      // Delete existing attendance for this date/batch
       final existing = await FirebaseFirestore.instance
           .collection('student_attendance')
           .where('date', isEqualTo: dateStr)
@@ -100,28 +103,71 @@ class _MarkAttendanceScreenState extends State<MarkAttendanceScreen> {
 
       for (var doc in existing.docs) await doc.reference.delete();
 
+      // Create new batch write
       final batch = FirebaseFirestore.instance.batch();
       for (var student in _students) {
         final status = _attendanceStatus[student['id']] ?? 'present';
         final docRef = FirebaseFirestore.instance.collection('student_attendance').doc();
         batch.set(docRef, {
-          'date': dateStr,
-          'batchId': _selectedBatchId,
+  'date': dateStr,
+  'batchId': _selectedBatchId,
+  'batchName': _selectedBatchName ?? '',
+  'studentId': student['id'],
+  'studentName': student['name'],
+  'rollNumber': student['rollNumber'],
+  'status': status,
+  'markedBy': currentUser?.email ?? 'Unknown',
+  'markedAt': Timestamp.now(),
+  'syncedToSheet': false, // ← ADD THIS LINE
+});
+      }
+      
+      // Commit the batch FIRST
+      await batch.commit();
+      
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving to Firestore: $e')));
+      setState(() => _isSaving = false);
+      return;
+    }
+
+    // NOW sync to Google Sheets (separate from Firestore batch)
+    try {
+      final scriptUrl = 'https://script.google.com/macros/s/AKfycbyQjA6uZq9w7CMo8IXMntLOp0De2LsfBqU_EPpFQqOOhSedwqY57-IP28thuM24txEI/exec'; // Replace with your Google Apps Script URL
+      
+      List<Map<String, dynamic>> sheetRecords = [];
+      for (var student in _students) {
+        sheetRecords.add({
+          'date': _formatDate(_selectedDate),
           'batchName': _selectedBatchName ?? '',
-          'studentId': student['id'],
           'studentName': student['name'],
           'rollNumber': student['rollNumber'],
-          'status': status,
-          'markedBy': currentUser?.email ?? 'Unknown',
-          'markedAt': Timestamp.now(),
+          'status': _attendanceStatus[student['id']] ?? 'present',
+          'markedBy': FirebaseAuth.instance.currentUser?.email ?? 'Unknown',
+          'markedAt': DateTime.now().toIso8601String(),
         });
       }
-      await batch.commit();
 
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Attendance saved for ${_students.length} students!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
+      await http.post(
+        Uri.parse(scriptUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'type': 'student', 'records': sheetRecords}),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ Attendance saved and synced to Google Sheet!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)),
+        );
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+      // Google Sheets sync failed, but Firestore saved successfully
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('✅ Attendance saved! (Sheet sync failed: ${e.toString()})'), backgroundColor: Colors.orange),
+        );
+      }
     }
+    
     setState(() => _isSaving = false);
   }
 

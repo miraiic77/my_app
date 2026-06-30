@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/csv_service.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class FacultyAttendanceScreen extends StatefulWidget {
   const FacultyAttendanceScreen({super.key});
@@ -63,9 +65,48 @@ class _FacultyAttendanceScreenState extends State<FacultyAttendanceScreen> {
       for (var faculty in _faculties) {
         final status = _attendanceStatus[faculty['id']] ?? 'present';
         final docRef = FirebaseFirestore.instance.collection('faculty_attendance').doc();
-        batch.set(docRef, {'date': dateStr, 'facultyId': faculty['id'], 'facultyName': faculty['name'], 'subject': faculty['subject'], 'status': status, 'markedBy': currentUser?.email ?? 'Unknown', 'markedAt': Timestamp.now()});
-      }
+        batch.set(docRef, {'date': dateStr, 'facultyId': faculty['id'], 'facultyName': faculty['name'], 'subject': faculty['subject'], 'status': status, 'markedBy': currentUser?.email ?? 'Unknown', 'markedAt': Timestamp.now()});batch.set(docRef, {
+  'date': dateStr,
+  'batchId': _selectedBatchId,
+  'batchName': _selectedBatchName ?? '',
+  'studentId': student['id'],
+  'studentName': student['name'],
+  'rollNumber': student['rollNumber'],
+  'status': status,
+  'markedBy': currentUser?.email ?? 'Unknown',
+  'markedAt': Timestamp.now(),
+  'syncedToSheet': false, // ← ADD THIS LINE
+});      }
       await batch.commit();
+            await batch.commit();
+
+      // --- NEW: Send to Google Sheets ---
+      try {
+        final scriptUrl = 'PASTE_YOUR_WEB_APP_URL_HERE'; // Replace with your copied URL
+        
+        List<Map<String, dynamic>> sheetRecords = [];
+        for (var faculty in _faculties) {
+          sheetRecords.add({
+            'date': _formatDate(_selectedDate),
+            'facultyName': faculty['name'],
+            'subject': faculty['subject'],
+            'status': _attendanceStatus[faculty['id']] ?? 'present',
+            'markedBy': currentUser?.email ?? 'Unknown',
+            'markedAt': DateTime.now().toIso8601String(),
+          });
+        }
+
+        await http.post(
+          Uri.parse(scriptUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'type': 'faculty', 'records': sheetRecords}),
+        );
+      } catch (e) {
+        print('Google Sheet sync failed: $e');
+      }
+      // ----------------------------------
+
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Faculty attendance saved and synced!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Faculty attendance saved for ${_faculties.length} members!'), backgroundColor: Colors.green, duration: const Duration(seconds: 2)));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
